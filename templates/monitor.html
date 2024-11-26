@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>센서 모니터링 시스템</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f0f0f0; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .header { background-color: #333; color: white; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
+        .stats { display: flex; justify-content: space-around; background-color: #444; padding: 10px; border-radius: 5px; color: white; }
+        .section { background-color: white; padding: 15px; margin: 15px 0; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .section h2 { margin-top: 0; color: #333; }
+        .normal { color: #28a745; }
+        .abnormal { color: #dc3545; }
+        .update { color: #007bff; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 8px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background-color: #f8f9fa; }
+        .chart { width: 100%; height: 400px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>센서 모니터링 시스템</h1>
+            <p>현재 시간: <span id="current-time"></span></p>
+        </div>
+        
+        <div class="stats">
+            <div>총 수신: <span id="total-received">0</span></div>
+            <div>이상 감지: <span id="total-abnormal">0</span></div>
+            <div>정상 복구: <span id="total-normalized">0</span></div>
+        </div>
+
+        <div class="section">
+            <h2>실시간 센서 데이터 그래프</h2>
+            <div id="sensorChart" class="chart"></div>
+        </div>
+
+        <div class="section">
+            <h2 class="update">최근 수신 데이터 현황</h2>
+            <table id="latest-updates">
+                <tr>
+                    <th>Device ID</th>
+                    <th>Value</th>
+                    <th>Time</th>
+                </tr>
+            </table>
+        </div>
+
+        <div class="section">
+            <h2 class="abnormal">현재 비정상 데이터 현황</h2>
+            <table id="abnormal-data">
+                <tr>
+                    <th>Device ID</th>
+                    <th>Value</th>
+                    <th>Threshold</th>
+                    <th>감지 시간</th>
+                    <th>지속 시간</th>
+                </tr>
+            </table>
+        </div>
+
+        <div class="section">
+            <h2 class="normal">최근 정상 복구 현황</h2>
+            <table id="normalized-data">
+                <tr>
+                    <th>Device ID</th>
+                    <th>비정상 값</th>
+                    <th>정상화 값</th>
+                    <th>감지 시간</th>
+                    <th>복구 시간</th>
+                    <th>지속 시간</th>
+                </tr>
+            </table>
+        </div>
+
+        <div class="section">
+            <h2 class="normal">전체 정상화 이력</h2>
+            <table id="normalization-history">
+                <tr>
+                    <th>Device ID</th>
+                    <th>비정상 값</th>
+                    <th>정상화 값</th>
+                    <th>감지 시간</th>
+                    <th>복구 시간</th>
+                    <th>지속 시간</th>
+                </tr>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        let ws = new WebSocket(`ws://${window.location.host}/ws`);
+        
+        ws.onopen = function() {
+            console.log('WebSocket 연결됨');
+        };
+        
+        ws.onclose = function() {
+            console.log('WebSocket 연결 끊김');
+            // 연결이 끊기면 3초 후 재연결 시도
+            setTimeout(function() {
+                ws = new WebSocket(`ws://${window.location.host}/ws`);
+            }, 3000);
+        };
+        
+        function updateData() {
+            fetch('/api/monitor-data')
+                .then(response => response.json())
+                .then(data => {
+                    // 시간 업데이트
+                    document.getElementById('current-time').textContent = data.current_time;
+                    
+                    // 통계 업데이트
+                    document.getElementById('total-received').textContent = data.stats.total_received;
+                    document.getElementById('total-abnormal').textContent = data.stats.total_abnormal;
+                    document.getElementById('total-normalized').textContent = data.stats.total_normalized;
+                    
+                    // 그래프 업데이트
+                    const traces = [];
+                    for (const deviceId in data.sensor_data.data) {
+                        traces.push({
+                            name: deviceId,
+                            x: data.sensor_data.time,
+                            y: data.sensor_data.data[deviceId],
+                            type: 'scatter',
+                            mode: 'lines+markers',
+                            connectgaps: true,
+                            line: { shape: 'linear' }
+                        });
+                    }
+
+                    traces.push({
+                        name: '임계값',
+                        x: data.sensor_data.time,
+                        y: Array(data.sensor_data.time.length).fill(data.threshold),
+                        type: 'scatter',
+                        mode: 'lines',
+                        line: {
+                            dash: 'dash',
+                            color: 'red'
+                        }
+                    });
+
+                    const layout = {
+                        title: '센서 데이터 변화',
+                        xaxis: {
+                            title: '시간',
+                            type: 'category'
+                        },
+                        yaxis: {
+                            title: '값'
+                        },
+                        showlegend: true,
+                        uirevision: true
+                    };
+
+                    Plotly.newPlot('sensorChart', traces, layout);
+
+                    // 테이블 업데이트
+                    updateTable('latest-updates', data.latest_updates);
+                    updateTable('abnormal-data', data.abnormal_devices);
+                    updateTable('normalized-data', data.normalized_devices);
+                    updateTable('normalization-history', data.normalization_history);
+                })
+                .catch(error => {
+                    console.error('데이터 업데이트 중 오류:', error);
+                });
+        }
+
+        function updateTable(tableId, data) {
+            const table = document.getElementById(tableId);
+            const headerRow = table.rows[0];
+            
+            // 기존 데이터 행 삭제
+            while (table.rows.length > 1) {
+                table.deleteRow(1);
+            }
+
+            // 새 데이터 추가
+            if (Array.isArray(data)) {
+                // 배열 형태의 데이터 처리 (정상화 이력)
+                for (const record of data) {
+                    const row = table.insertRow();
+                    row.insertCell().textContent = record.sensor_id;
+                    row.insertCell().textContent = record.abnormal_value.toFixed(2);
+                    row.insertCell().textContent = record.normal_value.toFixed(2);
+                    row.insertCell().textContent = record.detection_time;
+                    row.insertCell().textContent = record.normalization_time;
+                    row.insertCell().textContent = record.duration;
+                }
+            } else {
+                // 객체 형태의 데이터 처리
+                for (const [deviceId, info] of Object.entries(data)) {
+                    const row = table.insertRow();
+                    switch(tableId) {
+                        case 'latest-updates':
+                            row.insertCell().textContent = deviceId;
+                            row.insertCell().textContent = info.value.toFixed(2);
+                            row.insertCell().textContent = info.time;
+                            break;
+                        case 'abnormal-data':
+                            row.insertCell().textContent = deviceId;
+                            row.insertCell().textContent = info.value.toFixed(2);
+                            row.insertCell().textContent = info.threshold.toFixed(2);
+                            row.insertCell().textContent = info.detection_time;
+                            row.insertCell().textContent = info.duration;
+                            break;
+                        case 'normalized-data':
+                            row.insertCell().textContent = deviceId;
+                            row.insertCell().textContent = info.abnormal_value ? info.abnormal_value.toFixed(2) : '-';
+                            row.insertCell().textContent = '-';
+                            row.insertCell().textContent = '-';
+                            row.insertCell().textContent = info.normalization_time;
+                            row.insertCell().textContent = info.duration;
+                            break;
+                    }
+                }
+            }
+        }
+
+        // WebSocket 메시지 수신 시 데이터 업데이트
+        ws.onmessage = function(event) {
+            const response = JSON.parse(event.data);
+            if (response.status === 'success') {
+                updateData();
+            }
+        };
+
+        // 초기 데이터 로드
+        updateData();
+    </script>
+</body>
+</html>
