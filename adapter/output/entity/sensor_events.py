@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
-from ..entities.sensor_data import SensorData, AbnormalData
+from adapter.output.entity.sensor_data import SensorData, AbnormalData
 
 @dataclass
 class SensorDataReceived:

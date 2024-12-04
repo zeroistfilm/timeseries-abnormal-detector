@@ -1,10 +1,12 @@
 from datetime import datetime
 import pytz
 from typing import Dict, List
-from src.domain.models.sensor_data import SensorData
-from src.domain.models.abnormal_data import AbnormalData
-
-class MockSensorRepository:
+from adapter.output.entity.sensor_data import SensorData
+from adapter.output.entity.abnormal_data import AbnormalData
+from adapter.output.interface.IsensorRepository import ISensorRepository
+from py_singleton import singleton
+@singleton
+class MemorySensorRepository(ISensorRepository):
     def __init__(self):
         self.sensor_data: List[SensorData] = []
         self.abnormal_data: Dict[str, AbnormalData] = {}
@@ -47,3 +49,7 @@ class MockSensorRepository:
     def get_abnormal_data(self) -> Dict[str, AbnormalData]:
         """현재 비정상 상태인 데이터를 반환합니다."""
         return self.abnormal_data
+
+    def get_abnormal_data_by_id(self, sensor_id: str) -> AbnormalData | None:
+        """특정 센서의 비정상 데이터를 반환합니다."""
+        return self.abnormal_data.get(sensor_id)
