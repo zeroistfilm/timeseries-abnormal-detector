@@ -1,18 +1,19 @@
 from datetime import datetime
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Dict
 
 @dataclass
 class SensorData:
     sensor_id: str
     value: float
     timestamp: datetime
+    metadata: Dict = None
     
     @staticmethod
-    def create(sensor_id: str, value: float, timestamp: Optional[datetime] = None) -> 'SensorData':
+    def create(sensor_id: str, value: float, timestamp: Optional[datetime] = None, metadata: Dict = None) -> 'SensorData':
         if timestamp is None:
             timestamp = datetime.utcnow()
-        return SensorData(sensor_id=sensor_id, value=value, timestamp=timestamp)
+        return SensorData(sensor_id=sensor_id, value=value, timestamp=timestamp, metadata=metadata)
 
 @dataclass
 class AbnormalData:

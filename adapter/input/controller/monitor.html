@@ -18,6 +18,7 @@
         th, td { padding: 8px; text-align: left; border-bottom: 1px solid #ddd; }
         th { background-color: #f8f9fa; }
         .chart { width: 100%; height: 400px; }
+        .no-data { text-align: center; }
     </style>
 </head>
 <body>
@@ -58,6 +59,7 @@
                     <th>Threshold</th>
                     <th>감지 시간</th>
                     <th>지속 시간</th>
+                    <th>비정상 사유</th>
                 </tr>
             </table>
         </div>
@@ -86,6 +88,7 @@
                     <th>감지 시간</th>
                     <th>복구 시간</th>
                     <th>지속 시간</th>
+                    <th>비정상 사유</th>
                 </tr>
             </table>
         </div>
@@ -106,119 +109,182 @@
             }, 3000);
         };
         
+        function updateLatestUpdates(data) {
+            const tbody = document.getElementById('latest-updates');
+            tbody.innerHTML = '';
+            
+            if (!data || Object.keys(data).length === 0) {
+                tbody.innerHTML = '<tr><td colspan="3" class="no-data">데이터 없음</td></tr>';
+                return;
+            }
+
+            for (const [deviceId, update] of Object.entries(data)) {
+                const row = tbody.insertRow();
+                row.insertCell().textContent = deviceId;
+                row.insertCell().textContent = update.value ? update.value.toFixed(2) : '-';
+                row.insertCell().textContent = update.time || '-';
+            }
+        }
+
+        function updateAbnormalDevices(data) {
+            const tbody = document.getElementById('abnormal-data');
+            tbody.innerHTML = '';
+            
+            if (!data || Object.keys(data).length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="no-data">데이터 없음</td></tr>';
+                return;
+            }
+
+            for (const [deviceId, device] of Object.entries(data)) {
+                const row = tbody.insertRow();
+                row.insertCell().textContent = deviceId;
+                row.insertCell().textContent = device.value ? device.value.toFixed(2) : '-';
+                row.insertCell().textContent = device.threshold ? device.threshold.toFixed(2) : '-';
+                row.insertCell().textContent = device.detection_time || '-';
+                row.insertCell().textContent = device.duration || '-';
+                const reasonsCell = row.insertCell();
+                if (device.reasons && device.reasons.length > 0) {
+                    reasonsCell.innerHTML = device.reasons.join('<br>');
+                } else {
+                    reasonsCell.textContent = '-';
+                }
+            }
+        }
+
+        function updateNormalizedDevices(data) {
+            const tbody = document.getElementById('normalized-data');
+            tbody.innerHTML = '';
+            
+            if (!data || Object.keys(data).length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="no-data">데이터 없음</td></tr>';
+                return;
+            }
+
+            for (const [deviceId, device] of Object.entries(data)) {
+                const row = tbody.insertRow();
+                row.insertCell().textContent = deviceId;
+                row.insertCell().textContent = device.abnormal_value ? device.abnormal_value.toFixed(2) : '-';
+                row.insertCell().textContent = device.normal_value ? device.normal_value.toFixed(2) : '-';
+                row.insertCell().textContent = device.detection_time || '-';
+                row.insertCell().textContent = device.normalization_time || '-';
+                row.insertCell().textContent = device.duration || '-';
+            }
+        }
+
+        function updateNormalizationHistory(data) {
+            const tbody = document.getElementById('normalization-history');
+            tbody.innerHTML = '';
+            
+            if (!data || data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="no-data">데이터 없음</td></tr>';
+                return;
+            }
+
+            for (const record of data) {
+                const row = tbody.insertRow();
+                row.insertCell().textContent = record.sensor_id;
+                row.insertCell().textContent = record.abnormal_value ? record.abnormal_value.toFixed(2) : '-';
+                row.insertCell().textContent = record.normal_value ? record.normal_value.toFixed(2) : '-';
+                row.insertCell().textContent = record.detection_time || '-';
+                row.insertCell().textContent = record.normalization_time || '-';
+                row.insertCell().textContent = record.duration || '-';
+                const reasonsCell = row.insertCell();
+                if (record.reasons && record.reasons.length > 0) {
+                    reasonsCell.innerHTML = record.reasons.join('<br>');
+                } else {
+                    reasonsCell.textContent = '-';
+                }
+            }
+        }
+
+        function updateChart(sensorData) {
+            if (!sensorData || !sensorData.time || !sensorData.data) {
+                console.warn('차트 데이터 없음');
+                return;
+            }
+
+            const traces = [];
+            for (const [deviceId, values] of Object.entries(sensorData.data)) {
+                // Add sensor data trace
+                traces.push({
+                    name: deviceId,
+                    x: sensorData.time,
+                    y: values,
+                    type: 'scatter',
+                    mode: 'lines+markers',
+                    connectgaps: true
+                });
+
+                // Get location thresholds from metadata
+                const metadata = sensorData.metadata && sensorData.metadata[deviceId];
+                if (metadata) {
+                    // Add location thresholds
+                    if (metadata.locations) {
+                        Object.entries(metadata.locations).forEach(([location, config]) => {
+                            traces.push({
+                                name: `${deviceId} ${location} 기준`,
+                                x: sensorData.time,
+                                y: Array(sensorData.time.length).fill(config.threshold),
+                                type: 'scatter',
+                                mode: 'lines',
+                                line: { 
+                                    dash: 'dash', 
+                                    color: location === 'harim' ? 'orange' : 'green' 
+                                },
+                                opacity: 0.3
+                            });
+                        });
+                    }
+                    
+                    // Add detector threshold
+                    if (metadata.detector_threshold) {
+                        traces.push({
+                            name: `${deviceId} 이상치 기준`,
+                            x: sensorData.time,
+                            y: Array(sensorData.time.length).fill(metadata.detector_threshold),
+                            type: 'scatter',
+                            mode: 'lines',
+                            line: { 
+                                dash: 'dash', 
+                                color: 'red'
+                            },
+                            opacity: 0.7
+                        });
+                    }
+                }
+            }
+
+            const layout = {
+                title: '센서 데이터 변화',
+                xaxis: { title: '시간', type: 'category' },
+                yaxis: { title: '값' },
+                showlegend: true,
+                uirevision: true
+            };
+
+            Plotly.newPlot('sensorChart', traces, layout);
+        }
+
         function updateData() {
             fetch('/api/monitor-data')
                 .then(response => response.json())
                 .then(data => {
-                    // 시간 업데이트
-                    document.getElementById('current-time').textContent = data.current_time;
-                    
-                    // 통계 업데이트
-                    document.getElementById('total-received').textContent = data.stats.total_received;
-                    document.getElementById('total-abnormal').textContent = data.stats.total_abnormal;
-                    document.getElementById('total-normalized').textContent = data.stats.total_normalized;
-                    
-                    // 그래프 업데이트
-                    const traces = [];
-                    for (const deviceId in data.sensor_data.data) {
-                        traces.push({
-                            name: deviceId,
-                            x: data.sensor_data.time,
-                            y: data.sensor_data.data[deviceId],
-                            type: 'scatter',
-                            mode: 'lines+markers',
-                            connectgaps: true,
-                            line: { shape: 'linear' }
-                        });
-                    }
+                    console.log('Received data:', data);
 
-                    traces.push({
-                        name: '임계값',
-                        x: data.sensor_data.time,
-                        y: Array(data.sensor_data.time.length).fill(data.threshold),
-                        type: 'scatter',
-                        mode: 'lines',
-                        line: {
-                            dash: 'dash',
-                            color: 'red'
-                        }
-                    });
+                    document.getElementById('current-time').textContent = data.current_time || '-';
+                    document.getElementById('total-received').textContent = data.stats?.total_received || 0;
+                    document.getElementById('total-abnormal').textContent = data.stats?.total_abnormal || 0;
+                    document.getElementById('total-normalized').textContent = data.stats?.total_normalized || 0;
 
-                    const layout = {
-                        title: '센서 데이터 변화',
-                        xaxis: {
-                            title: '시간',
-                            type: 'category'
-                        },
-                        yaxis: {
-                            title: '값'
-                        },
-                        showlegend: true,
-                        uirevision: true
-                    };
-
-                    Plotly.newPlot('sensorChart', traces, layout);
-
-                    // 테이블 업데이트
-                    updateTable('latest-updates', data.latest_updates);
-                    updateTable('abnormal-data', data.abnormal_devices);
-                    updateTable('normalized-data', data.normalized_devices);
-                    updateTable('normalization-history', data.normalization_history);
+                    updateChart(data.sensor_data);
+                    updateLatestUpdates(data.latest_updates);
+                    updateAbnormalDevices(data.abnormal_devices);
+                    updateNormalizedDevices(data.normalized_devices);
+                    updateNormalizationHistory(data.normalization_history);
                 })
                 .catch(error => {
                     console.error('데이터 업데이트 중 오류:', error);
                 });
-        }
-
-        function updateTable(tableId, data) {
-            const table = document.getElementById(tableId);
-            const headerRow = table.rows[0];
-            
-            // 기존 데이터 행 삭제
-            while (table.rows.length > 1) {
-                table.deleteRow(1);
-            }
-
-            // 새 데이터 추가
-            if (Array.isArray(data)) {
-                // 배열 형태의 데이터 처리 (정상화 이력)
-                for (const record of data) {
-                    const row = table.insertRow();
-                    row.insertCell().textContent = record.sensor_id;
-                    row.insertCell().textContent = record.abnormal_value.toFixed(2);
-                    row.insertCell().textContent = record.normal_value.toFixed(2);
-                    row.insertCell().textContent = record.detection_time;
-                    row.insertCell().textContent = record.normalization_time;
-                    row.insertCell().textContent = record.duration;
-                }
-            } else {
-                // 객체 형태의 데이터 처리
-                for (const [deviceId, info] of Object.entries(data)) {
-                    const row = table.insertRow();
-                    switch(tableId) {
-                        case 'latest-updates':
-                            row.insertCell().textContent = deviceId;
-                            row.insertCell().textContent = info.value.toFixed(2);
-                            row.insertCell().textContent = info.time;
-                            break;
-                        case 'abnormal-data':
-                            row.insertCell().textContent = deviceId;
-                            row.insertCell().textContent = info.value.toFixed(2);
-                            row.insertCell().textContent = info.threshold.toFixed(2);
-                            row.insertCell().textContent = info.detection_time;
-                            row.insertCell().textContent = info.duration;
-                            break;
-                        case 'normalized-data':
-                            row.insertCell().textContent = deviceId;
-                            row.insertCell().textContent = info.abnormal_value ? info.abnormal_value.toFixed(2) : '-';
-                            row.insertCell().textContent = '-';
-                            row.insertCell().textContent = '-';
-                            row.insertCell().textContent = info.normalization_time;
-                            row.insertCell().textContent = info.duration;
-                            break;
-                    }
-                }
-            }
         }
 
         // WebSocket 메시지 수신 시 데이터 업데이트
