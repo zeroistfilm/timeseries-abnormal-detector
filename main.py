@@ -16,7 +16,7 @@ async def startup_event():
     await sensorService.initialize()
     scheduler = AsyncIOScheduler()
     async def scheduled_task():
-        for sector in range(1, 4):
+        for sector in range(1, 20):
             await sensorService.process_data(101, sector)
 
 

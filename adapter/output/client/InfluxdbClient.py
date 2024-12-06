@@ -9,10 +9,12 @@ import random
 import json
 from py_singleton import singleton
 
+
 @singleton
 class InfluxDBClient():
     def __init__(self):
         self.client = None
+
     async def initializeClient(self):
         # print("InfluxClient initializeClient")
         self.client = InfluxDBClientAsync(url="http://uniai-master1:30003",
@@ -44,11 +46,11 @@ class InfluxDBClient():
                     buildingNo = topic.split('/')[5]
                     measurement = topic.split('/')[2]
                 elif '/coxlab' in topic:
-                    #/coxlab/co2/507/choiyulfarm/2/1-1
+                    # /coxlab/co2/507/choiyulfarm/2/1-1
                     buildingNo = topic.split('/')[5]
                     measurement = topic.split('/')[2]
                 elif '/dev/breedInfo' in topic:
-                    #/dev\/breedInfo\/{farmIdx}\/[^\/]+\/{buildingNo}\/isBreedActive/
+                    # /dev\/breedInfo\/{farmIdx}\/[^\/]+\/{buildingNo}\/isBreedActive/
                     buildingNo = topic.split('/')[5]
                     measurement = topic.split('/')[6]
                 else:
@@ -76,7 +78,6 @@ class InfluxDBClient():
                 result[buildingNo][measurement][topic]['date'].append(j.values['_time'])
                 result[buildingNo][measurement][topic]['value'].append(j.values['_value'])
 
-
         for buildingNo in result.keys():
             for measurement in result[buildingNo].keys():
                 for topic in result[buildingNo][measurement].keys():
@@ -89,10 +90,7 @@ class InfluxDBClient():
 
                     result[buildingNo][measurement][topic] = merged_data
 
-
         return result
-
-
 
     async def getAllTopics(self):
         query = '''
@@ -107,33 +105,49 @@ class InfluxDBClient():
                 topics.append(record.values['topic'])
         return topics
 
-
     async def getRecentData(self, farmIdx, sector):
-        #/{sector}/: 기존에는 {sector} 뒤에 다른 숫자들이 나오는 경우도 매칭될 가능성이 있었습니다.
-        #/{sector}\//: {sector} 바로 뒤에 슬래시(/)가 와야만 매칭되도록 제한했습니다.
+        # /{sector}/: 기존에는 {sector} 뒤에 다른 숫자들이 나오는 경우도 매칭될 가능성이 있었습니다.
+        # /{sector}\//: {sector} 바로 뒤에 슬래시(/)가 와야만 매칭되도록 제한했습니다.
         query = f'''
         from(bucket: "ai_data")
-        |> range(start:-30m)
+        |> range(start:-1h)
         |> filter(fn: (r) => 
                 r.topic  =~ /choretime\/{farmIdx}\/[^\/]+\/{sector}\//
         )
         '''
         original = await self.client.query_api().query(query=query)
-
-
         modifiedData = self.dataExtractByBuilding(original)
-        #measurement, topic, (date, value)
+
+        if str(sector) not in modifiedData:
+            return None
         return modifiedData[str(sector)]
+
+    async def getCurrentAge(self, farmIdx, sector) -> int:
+        query = f'''
+        from(bucket: "ai_data")
+        |> range(start:-1h)
+        |> filter(fn: (r) => 
+                r.topic  =~ /choretime\/{farmIdx}\/[^\/]+\/{sector}\/age/
+        )
+        |> last()
+        '''
+        original = await self.client.query_api().query(query=query)
+        modifiedData = self.dataExtractByBuilding(original)
+        if str(sector) not in modifiedData:
+            return None
+        for topic in modifiedData[str(sector)]['age'].keys():
+            return int(modifiedData[str(sector)]['age'][topic].iloc[-1]['value'])
+
+
 
 if __name__ == '__main__':
     async def main():
         client = InfluxDBClient()
         await client.initializeClient()
-        result = await client.getRecentData(101, 1)
-        for key, value in result.items():
-            for key2, value2 in value.items():
-                print(key2)
+        result = await client.getCurrentAge(101, 1)
+        print(result)
 
 
     import asyncio
+
     asyncio.run(main())

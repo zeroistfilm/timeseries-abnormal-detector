@@ -7,7 +7,7 @@ from adapter.output.interface.IsensorRepository import ISensorRepository
 from py_singleton import singleton
 @singleton
 class MemorySensorRepository(ISensorRepository):
-    def __init__(self):
+    def ㅈㅈ__init__(self):
         self.sensor_data: List[SensorData] = []
         self.abnormal_data: Dict[str, AbnormalData] = {}
         self.kst = pytz.timezone('Asia/Seoul')
