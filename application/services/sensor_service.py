@@ -7,6 +7,7 @@ from adapter.output.interface.IsensorRepository import ISensorRepository
 from adapter.output.client.memory_sensor_repository import MemorySensorRepository
 from adapter.output.client.ruleClient import RuleClient
 from adapter.output.client.InfluxdbClient import InfluxDBClient
+from adapter.output.client.ScylladbClient import ScyllaDBClient
 from domain.events.event_handlers import log_sensor_data_received, log_abnormal_data_detected, \
     log_abnormal_data_normalized
 from domain.anomaly.plugin import RuleMatchDetectorManager, ThresholdDetector, RuleMatchContext
@@ -18,9 +19,9 @@ from py_singleton import singleton
 class SensorService:
     def __init__(self):
         self.repository = MemorySensorRepository()
-
         self.ruleClient = RuleClient()
         self.influxdbClient = InfluxDBClient()
+        self.scylladbClient = ScyllaDBClient()
 
         self.previous_states = {}  # 이전 상태 저장
         self.change_logs = []  # 변경 기록 저장
@@ -86,40 +87,13 @@ class SensorService:
             )
 
             self.ruleManager.add_detectors(rule)
-            result = self.ruleManager.detect_all(context)
+            ruleMatchedResult = self.ruleManager.detect_all(context)
 
 
-            current_status = {
-                "rule_id": result[0].details["rule_id"],
-                "timestamp": last_time
-            }
+            for result in ruleMatchedResult:
 
-            # 이전 상태 가져오기
-            old_status = self.previous_states.get(topic, None)
+                self.scylladbClient.resisterTopicStatus(result)
 
-            # rule_id가 변경된 경우에만 기록
-            if old_status is None or old_status["rule_id"] != current_status["rule_id"]:
-                duration = None
-                if old_status:
-                    # 상태 지속 시간 계산
-                    duration = (last_time - old_status["timestamp"]).total_seconds()
-
-                # 변경 기록 추가
-                change_record = {
-                    "topic": topic,
-                    "oldStatus": old_status,
-                    "newStatus": current_status,
-                    "changedAt": last_time,
-                    "duration": duration  # 상태 지속 시간
-                }
-                self.change_logs.append(change_record)
-                print(f"Rule ID changed for topic '{topic}': {change_record}")
-
-            # 현재 상태를 이전 상태로 업데이트
-            self.previous_states[topic] = current_status
-
-            print(self.previous_states)
-            print(self.change_logs)
 
 
     def process_sensor_data(self, sensor_id: str, value: float, timestamp: datetime, metadata: Dict = None,

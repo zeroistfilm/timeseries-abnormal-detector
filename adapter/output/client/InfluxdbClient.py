@@ -118,8 +118,8 @@ class InfluxDBClient():
                 r.topic  =~ /choretime\/{farmIdx}\/[^\/]+\/{sector}\//
         )
         '''
-
         original = await self.client.query_api().query(query=query)
+
 
         modifiedData = self.dataExtractByBuilding(original)
         #measurement, topic, (date, value)
