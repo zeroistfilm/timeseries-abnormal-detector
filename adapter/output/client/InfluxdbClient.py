@@ -3,47 +3,15 @@ from typing import List
 if __name__ == "__main__":
     import sys
     import os
-
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 from adapter.output.client.ruleClient import RuleClient
-
 from influxdb_client.client.influxdb_client_async import InfluxDBClientAsync
-
 import pandas as pd
-
 import datetime
-from datetime import timezone, timedelta
-import numpy as np
-import random
-import json
 from py_singleton import singleton
-from typing import List
-from dataclasses import dataclass, field
 
 
-@dataclass
-class MeasurementOperation:
-    measurement: List[str] = field(default_factory=list)
-    operation: str = ""
-
-    def __post_init__(self):
-        self.validate()
-
-    def validate(self):
-        # measurement의 길이 검증
-        if not (1 <= len(self.measurement) <= 2):
-            raise ValueError("measurement는 1개 또는 2개의 항목만 가질 수 있습니다.")
-
-        if len(self.measurement) == 1:
-            if self.operation:
-                raise ValueError("measurement이 1개인 경우 operation은 필요하지 않습니다.")
-
-        if len(self.measurement) == 2:
-            # operation 검증
-            valid_operations = {'+', '-', '*', '/'}
-            if self.operation not in valid_operations:
-                raise ValueError(f"operation은 {valid_operations} 중 하나여야 합니다.")
-
+from adapter.output.client.dto.dto import MeasurementOperation
 
 @singleton
 class InfluxDBClient():
@@ -432,7 +400,14 @@ class InfluxDBClient():
 
         return len(minVentFanStatus)
 
-    #====
+    #========
+
+
+    async def alarmQueryExecutor(self, farmIdx, sector, measurement:MeasurementOperation):
+        query = self._generateQuery({'farmIdx': farmIdx, 'sector': sector}, measurement)
+        result = await self._process_query(query)
+        return result
+
 
     async def _process_query(self, query):
         """
@@ -459,87 +434,7 @@ class InfluxDBClient():
 
         return result
 
-    def _highlight_ranges(self, state_duration_data, target_time):
-        """
-        stateDuration 값이 target_time 이상인 구간을 추출.
-        값이 감소하면 구간을 종료하고 초기화.
-        """
-        highlight_ranges = []  # 최종 음영 범위를 저장
-        current_range_start = None  # 현재 구간의 시작점
-        change_start = None  # 변화 시작점
-
-        for i, (time, value) in enumerate(state_duration_data):
-            # 값이 감소하면 현재 구간 종료 및 초기화
-            if i > 0 and value < state_duration_data[i - 1][1]:
-                if current_range_start is not None:
-                    highlight_ranges.append((change_start, time))  # 이전 변화 구간 저장
-                current_range_start = None
-                change_start = None
-
-            # 변화 시작점 감지
-            if change_start is None and value > 0:
-                change_start = time
-
-            # target_time 이상인 구간의 시작
-            if value >= target_time and current_range_start is None:
-                current_range_start = time
-
-            # target_time 이하로 돌아간 경우
-            elif value < target_time and current_range_start is not None:
-                highlight_ranges.append((change_start, time))  # 구간 저장
-                current_range_start = None
-                change_start = None  # 변화 시작점 초기화
-
-        # 마지막 구간 처리
-        if current_range_start is not None:
-            highlight_ranges.append((change_start, state_duration_data[-1][0]))
-
-        return highlight_ranges
-
-    def _plot_data(self, result, highlight_ranges, title):
-        """
-        데이터 시각화 및 음영 추가
-        """
-        import matplotlib.pyplot as plt
-        # 시각화
-        plt.figure(figsize=(24, 12))
-
-        if 'firstData' in result:
-            first_time = [point[0] for point in result.get('firstData', [])]
-            first_value = [point[1] for point in result.get('firstData', [])]
-            plt.plot(first_time, first_value, label="firstData", linestyle='-', marker='o')
-
-        if 'secondData' in result:
-            second_time = [point[0] for point in result.get('secondData', [])]
-            second_value = [point[1] for point in result.get('secondData', [])]
-            plt.plot(second_time, second_value, label="secondData", linestyle='-', marker='x')
-
-        if 'operationResult' in result:
-            state_duration_time = [point[0] for point in result.get('operationResult', [])]
-            state_duration_values = [point[1] for point in result.get('operationResult', [])]
-            plt.plot(state_duration_time, state_duration_values, label="operationResult", linestyle='-', marker='x')
-
-        if 'stateDuration' in result:
-            state_duration_time = [point[0] for point in result.get('stateDuration', [])]
-            state_duration_values = [point[1] for point in result.get('stateDuration', [])]
-            plt.plot(state_duration_time, state_duration_values, label="State Duration", linestyle='-', marker='x')
-
-        # 음영 추가
-        for start, end in highlight_ranges:
-            plt.axvspan(start, end, color='red', alpha=0.3,
-                        label="State Duration >= TargetTime" if start == highlight_ranges[0][0] else "")
-
-        # 그래프 설정
-        plt.title(title)
-        plt.xlabel("Time")
-        plt.ylabel("Values")
-        plt.legend()
-        plt.grid(True)
-        plt.tight_layout()
-        plt.show()
-
-
-    def _generateQuery(self, farmInfo, measurement:MeasurementOperation, queryType):
+    def _generateQuery(self, farmInfo, measurement:MeasurementOperation):
         '''
         queryType:
             method : 'threshold' or 'gradient'
@@ -552,7 +447,6 @@ class InfluxDBClient():
                     gradient: float
             }
         '''
-
         def __getBasicQuery(farmIdx, sector, name, measurement):
             return f'''
                 {name} = from(bucket: "ai_data")
@@ -569,8 +463,6 @@ class InfluxDBClient():
         if not isinstance(measurement, MeasurementOperation):
             raise ValueError("measurement must be MeasurementOperation type")
 
-        if queryType['method'] not in ['threshold', 'gradient']:
-            raise ValueError("queryType must be 'threshold' or 'gradient'")
 
         farmIdx = farmInfo['farmIdx']
         sector = farmInfo['sector']
@@ -596,7 +488,7 @@ class InfluxDBClient():
                operationResult = joined
                  |> map(fn: (r) => ({{
                    _time: r._time,
-                   _value: r._value_first {measurement.operation} r._value_second,
+                   _value: r._value_first {measurement.operator} r._value_second,
                    topic: "operationResult"
                  }}))
                  |> yield(name: "operationResult")
@@ -605,12 +497,11 @@ class InfluxDBClient():
             query += first_query + second_query + join_query
 
 
-        if queryType['method'] == 'threshold':
-            if 'min' not in queryType['detail'] or 'max' not in queryType['detail']:
-                raise ValueError("min and max must be in detail")
-
-            min = queryType['detail']['min']
-            max = queryType['detail']['max']
+        if measurement.method == 'threshold':
+            # min = queryType['detail']['min']
+            # max = queryType['detail']['max']
+            min = measurement.detail['min']
+            max = measurement.detail['max']
 
             if min > max:
                 raise ValueError("min must be less than max")
@@ -619,16 +510,16 @@ class InfluxDBClient():
 
             query += f'''
               |> map(fn: (r) => ({{ r with valid: (r._value > {min} and r._value <= {max}) }}))
-              |> stateDuration(fn: (r) => r.valid, unit: 10m)
+              |> stateDuration(fn: (r) => r.valid, unit: 1m)
               |> yield(name: "threshold")
             '''
 
-        elif queryType['method'] == 'gradient':
-            if 'trend' not in queryType['detail'] or 'gradient' not in queryType['detail']:
-                raise ValueError("trend and gradient must be in detail")
+        elif measurement.method == 'gradient':
 
-            trend = queryType['detail']['trend']
-            gradient = queryType['detail']['gradient']
+            # trend = queryType['detail']['trend']
+            # gradient = queryType['detail']['gradient']
+            trend = measurement.detail['trend']
+            gradient = measurement.detail['gradient']
 
             if trend not in ['up', 'down']:
                 raise ValueError("trend must be 'up' or 'down'")
@@ -637,7 +528,8 @@ class InfluxDBClient():
                 query += f'''
                   |> sort(columns: ["_time"])
                   |> derivative(unit: 10m, nonNegative: false)
-                  |> stateDuration(fn: (r) => r._value > {gradient}, unit: 10m)
+                 |> yield(name: "derivative")
+                  |> stateDuration(fn: (r) => r._value > {gradient}, unit: 1m)
                   |> yield(name: "trend")
                 '''
 
@@ -645,61 +537,15 @@ class InfluxDBClient():
                 query += f'''
                   |> sort(columns: ["_time"])
                   |> derivative(unit: 10m, nonNegative: false)
-                  |> stateDuration(fn: (r) => r._value < {gradient}, unit: 10m)
+                  |> yield(name: "derivative")
+                  |> stateDuration(fn: (r) => r._value < {gradient}, unit: 1m)
                   |> yield(name: "trend")
                 '''
         return query
 
 
-    async def alarmGradient(self, farmIdx: int,
-                            sector: int,
-                            measurement: MeasurementOperation,
-                            gradient,
-                            targetTime,
-                            trend):
-        """
-        특정 gradient 이상으로 targetTime 이상 변화하면 알람 발생.
-        """
 
-        if not isinstance(measurement, MeasurementOperation):
-            raise ValueError("measurement must be MeasurementOperation type")
 
-        if trend not in ['up', 'down']:
-            raise ValueError("trend must be 'up' or 'down'")
-
-        queryType ={
-            'method': 'gradient',
-            'detail': {
-                'trend': trend,
-                'gradient': gradient
-            }
-        }
-        query = self._generateQuery({'farmIdx': farmIdx, 'sector': sector}, measurement, queryType)
-
-        result = await self._process_query(query)
-        highlight_ranges = self._highlight_ranges(result['stateDuration'], targetTime)
-        self._plot_data(result, highlight_ranges,
-                        f"{measurement}is changed more than {gradient} for {targetTime} minutes")
-
-    async def alarmThreshold(self, farmIdx, sector,   measurement: MeasurementOperation, threshold, targetTime):
-        """
-        특정 threshold 이하로 targetTime 이상 지속되면 알람 발생.
-        """
-        if not isinstance(measurement, MeasurementOperation):
-            raise ValueError("measurement must be MeasurementOperation type")
-
-        queryType = {
-            'method': 'threshold',
-            'detail': {
-                'min': threshold[0],
-                'max': threshold[1]
-            }
-        }
-        query = self._generateQuery({'farmIdx': farmIdx, 'sector': sector}, measurement, queryType)
-
-        result = await self._process_query(query)
-        highlight_ranges = self._highlight_ranges(result['stateDuration'], targetTime)
-        self._plot_data(result, highlight_ranges, f"{threshold}")
 
 
 if __name__ == '__main__':
@@ -729,7 +575,6 @@ if __name__ == '__main__':
                                    trend="up",
                                    gradient=0.01,
                                    targetTime=3)  # 10분당 물 소비량이 30이 안되는 경우가 30분 이상 지속될 경우
-
 
     import asyncio
 
