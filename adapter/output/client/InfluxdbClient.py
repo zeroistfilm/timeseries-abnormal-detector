@@ -417,6 +417,7 @@ class InfluxDBClient():
         result = {}
         for table in res:
             for record in table.records:
+                print(record.values)
                 title = record.values['result']
                 time = record.values['_time']
                 value = record.values['_value']
@@ -541,6 +542,8 @@ class InfluxDBClient():
                   |> stateDuration(fn: (r) => r._value < {gradient}, unit: 1m)
                   |> yield(name: "trend")
                 '''
+
+        print(query)
         return query
 
 

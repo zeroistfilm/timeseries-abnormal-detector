@@ -19,6 +19,54 @@ class AnomalyDetectService:
     def __init__(self):
         self.influxdbClient = InfluxDBClient()
 
+
+    async def multiAlarmMonitor(self, farmIdx: int, sector: int, measurements: list[MeasurementOperation]):
+        """
+        다수의 알람 조건을 처리하는 통합 함수.
+
+        Args:
+            farmIdx (int): 농장 ID
+            sector (int): 구역 ID
+            measurements (List[MeasurementOperation]): 알람 설정 정보 리스트
+        """
+
+        resultTimes = []
+        for measurement in measurements:
+            result, times = await self.alarmMonitor(farmIdx, sector, measurement)
+            resultTimes.append(times)
+
+        overlaps = self.find_overlapping_intervals(resultTimes)
+
+        return overlaps
+
+    def find_overlapping_intervals(self, resultTimes):
+        # resultTimes는 [ [ (start, end), (start, end), ...],
+        #                  [ (start, end), (start, end), ...], ... ] 형태의 리스트
+        # 서로 다른 list(각 measurement 결과) 간 겹치는 구간을 찾기 위해 모든 쌍 비교
+        if not resultTimes:
+            return []
+
+        if len(resultTimes) == 1:
+            return resultTimes[0]
+        # 첫 번째 measurement 결과를 기준으로 시작해 다음 measurement들과 비교
+        base_intervals = resultTimes[0]
+        overlapping = []
+
+        # 모든 measurement들의 intervals와 비교
+        for other_measurements in resultTimes[1:]:
+            for base_start, base_end in base_intervals:
+                for other_start, other_end in other_measurements:
+                    # 두 구간이 겹치는지 확인
+                    # 겹치는 조건: base_start < other_end and other_start < base_end
+                    if base_start < other_end and other_start < base_end:
+                        # 겹치는 구간은 start는 max(base_start, other_start),
+                        # end는 min(base_end, other_end)
+                        overlap_start = max(base_start, other_start)
+                        overlap_end = min(base_end, other_end)
+                        overlapping.append((overlap_start, overlap_end))
+
+        return overlapping
+
     async def alarmMonitor(self, farmIdx: int, sector: int, measurement: MeasurementOperation):
         """
         threshold, gradient 등 다양한 알람 조건을 처리하는 통합 함수.
@@ -40,10 +88,6 @@ class AnomalyDetectService:
         if method == 'gradient':
             gradient = detail['gradient']
             trend = detail['trend']
-            queryType = {
-                'method': 'gradient',
-                'detail': {'trend': trend, 'gradient': gradient}
-            }
             result = await self.influxdbClient.alarmQueryExecutor(farmIdx, sector, measurement)
             highlight_ranges = self._highlight_ranges(result['stateDuration'], targetTime)
             self._plot_data(result, highlight_ranges,
@@ -51,10 +95,6 @@ class AnomalyDetectService:
 
         elif method == 'threshold':
             threshold = (detail.get('min'), detail.get('max'))
-            queryType = {
-                'method': 'threshold',
-                'detail': {'min': threshold[0], 'max': threshold[1]}
-            }
             result = await self.influxdbClient.alarmQueryExecutor(farmIdx, sector, measurement)
             highlight_ranges = self._highlight_ranges(result['stateDuration'], targetTime)
             self._plot_data(result, highlight_ranges,
@@ -63,7 +103,7 @@ class AnomalyDetectService:
         else:
             raise ValueError(f"Unsupported method: {method}")
 
-        print(highlight_ranges)
+        return result, highlight_ranges
 
 
     def _highlight_ranges(self, state_duration_data, target_time):
@@ -108,6 +148,7 @@ class AnomalyDetectService:
         여러 Y축을 사용하여 데이터를 시각화하고 음영 범위를 추가합니다.
         """
         import matplotlib.pyplot as plt
+        import matplotlib.dates as mdates
 
         fig, ax1 = plt.subplots(figsize=(24, 12))  # 메인 축 생성
 
@@ -151,25 +192,32 @@ class AnomalyDetectService:
             ax4.spines['right'].set_position(("outward", 120))
             operation_time = [point[0] for point in result['operationResult']]
             operation_value = [point[1] for point in result['operationResult']]
-            ax4.plot(operation_time, operation_value, label="Operation Result", linestyle='-', marker='s', color='tab:green')
+            ax4.plot(operation_time, operation_value, label="Operation Result", linestyle='-', marker='s',
+                     color='tab:green')
             ax4.set_ylabel("Operation Result", color='tab:green')
             ax4.tick_params(axis='y', labelcolor='tab:green')
 
         # 음영 범위 추가
-        for start, end in highlight_ranges:
+        for i, (start, end) in enumerate(highlight_ranges):
             ax1.axvspan(start, end, color='red', alpha=0.3,
-                        label="Alarm Range" if start == highlight_ranges[0][0] else "")
+                        label="Alarm Range" if i == 0 else "")
+
+        # 시간축 설정: 1시간 단위로 레이블 표시
+        ax1.xaxis.set_major_locator(mdates.HourLocator(interval=1))
+        ax1.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d %H:%M'))
+        fig.autofmt_xdate()  # 날짜 포맷을 자동으로 맞추기 위해 호출
 
         # 그래프 제목 및 설정
         plt.title(title)
         ax1.set_xlabel("Time")
         fig.tight_layout()
 
+        # 격자 표시 (메인 x축 기준)
+        ax1.grid(True, which='both', linestyle='--', alpha=0.7)
+
         # 범례 설정
         fig.legend(loc="upper left", bbox_to_anchor=(0.1, 0.9))
-        plt.grid(True)
         plt.show()
-
 if __name__ ==  "__main__":
     import asyncio
     import random
@@ -244,54 +292,21 @@ if __name__ ==  "__main__":
         anomalyDetectService = AnomalyDetectService()
         await anomalyDetectService.influxdbClient.initializeClient()
 
-        measurement = MeasurementOperation(
-            measurement=['relativeHumidity', 'averageTemperature'],
-            operator='*',
-            method='gradient',
-            detail={
-                'trend': 'up',
-                'gradient': 0.1,
-
-            },
-            targetTime=10
-        )
-        await anomalyDetectService.alarmMonitor(103, 3, measurement)
-
-
-        measurement = MeasurementOperation(
-            measurement=['relativeHumidity', 'averageTemperature'],
-            operator='*',
+        measurement1 = MeasurementOperation(
+            measurement=['heatStatus1'],
             method='threshold',
-            detail={
-                'min': 2300,
-                'max': 10000,
-            },
-            targetTime=10
-        )
-        await anomalyDetectService.alarmMonitor(103, 3, measurement)
-
-
-        measurement = MeasurementOperation(
-            measurement=['relativeHumidity'],
-            method='threshold',
-            detail={
-                'min': 82,
-                'max': 84,
-            },
+            detail={'min': 0.1, 'max': 1.5},  # 히터가 작동 중
             targetTime=30
         )
-        await anomalyDetectService.alarmMonitor(103, 3, measurement)
-
-        measurement = MeasurementOperation(
-            measurement=['relativeHumidity'],
+        measurement2 = MeasurementOperation(
+            measurement=['averageTemperature'],
             method='gradient',
-            detail={
-                'trend': 'up',
-                'gradient': 0.1,
-            },
+            detail={'trend': 'down', 'gradient': 0.05},  # 기대되는 상승이 없음
             targetTime=30
         )
-        await anomalyDetectService.alarmMonitor(103, 3, measurement)
+        measurements = [measurement1, measurement2]
+        overlapTimes = await anomalyDetectService.multiAlarmMonitor(103, 3,  measurements)
+        print(overlapTimes)
 
         # await anomalyDetectService.execute_alarm_rules(
         #     farmIdx=103,
