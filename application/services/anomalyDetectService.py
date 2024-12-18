@@ -19,102 +19,51 @@ class AnomalyDetectService:
     def __init__(self):
         self.influxdbClient = InfluxDBClient()
 
-    # async def execute_alarm_rules(self, farmIdx, sector, rules):
-    #     """
-    #     확장된 선언형 알람 규칙 실행
-    #     """
-    #     for rule in rules:
-    #         target_time = rule["targetTime"]
-    #         message = rule["message"]
-    #
-    #         # 전체 조건 실행 및 평가
-    #         print(rule)
-    #         result = await self._evaluate_conditions_recursive(farmIdx, sector, rule["conditions"], rule["logic"],
-    #                                                            target_time)
-    #         if result:
-    #             print(f"ALARM: {rule['name']} - {message}")
-    #
-    # async def _evaluate_conditions_recursive(self, farmIdx, sector, conditions, logic, target_time):
-    #     """
-    #     조건들을 재귀적으로 평가
-    #     """
-    #     results = []
-    #     for condition in conditions:
-    #         if "conditions" in condition:  # 그룹 조건이 있는 경우 (재귀)
-    #             group_result = await self._evaluate_conditions_recursive(
-    #                 farmIdx, sector, condition["conditions"], condition["logic"], target_time
-    #             )
-    #             results.append(group_result)
-    #         else:  # 개별 조건 실행
-    #
-    #             measurement = MeasurementOperation(measurement=condition["measurement"], operation="")
-    #             if condition["type"] == "threshold":
-    #                 queryType = {
-    #                     'method': 'threshold',
-    #                     'detail': {
-    #                         'min': condition["detail"]["min"],
-    #                         'max': condition["detail"]["max"]
-    #                     }
-    #                 }
-    #                 result = await self.influxdbClient.alarmQueryExecutor(farmIdx, sector, measurement, queryType)
-    #                 highlight_ranges = self._highlight_ranges(result['stateDuration'], target_time)
-    #
-    #             if condition["type"] == "gradient":
-    #                 queryType = {
-    #                     'method': 'gradient',
-    #                     'detail': {
-    #                         'trend': condition["detail"]["trend"],
-    #                         'gradient': condition["detail"]["gradient"]
-    #                     }
-    #                 }
-    #                 result = await self.influxdbClient.alarmQueryExecutor(farmIdx, sector, measurement, queryType)
-    #                 highlight_ranges = self._highlight_ranges(result['stateDuration'], target_time)
-
-
-
-
-    async def alarmGradient(self, farmIdx: int,
-                            sector: int,
-                            measurement: MeasurementOperation,
-                            ):
+    async def alarmMonitor(self, farmIdx: int, sector: int, measurement: MeasurementOperation):
         """
-        특정 gradient 이상으로 targetTime 이상 변화하면 알람 발생.
-        """
+        threshold, gradient 등 다양한 알람 조건을 처리하는 통합 함수.
 
+        Args:
+            farmIdx (int): 농장 ID
+            sector (int): 구역 ID
+            measurement (MeasurementOperation): 알람 설정 정보
+        """
         if not isinstance(measurement, MeasurementOperation):
             raise ValueError("measurement must be MeasurementOperation type")
 
-
+        # 공통 파라미터 추출
+        method = measurement.method  # threshold, gradient 등
         targetTime = measurement.targetTime
-        gradient = measurement.detail['gradient']
+        detail = measurement.detail
 
-        result = await self.influxdbClient.alarmQueryExecutor(farmIdx, sector, measurement)
-        highlight_ranges = self._highlight_ranges(result['stateDuration'], targetTime)
-        self._plot_data(result, highlight_ranges,
-                        f"{measurement}is changed more than {gradient} for {targetTime} minutes")
+        # method에 따라 설정
+        if method == 'gradient':
+            gradient = detail['gradient']
+            trend = detail['trend']
+            queryType = {
+                'method': 'gradient',
+                'detail': {'trend': trend, 'gradient': gradient}
+            }
+            result = await self.influxdbClient.alarmQueryExecutor(farmIdx, sector, measurement)
+            highlight_ranges = self._highlight_ranges(result['stateDuration'], targetTime)
+            self._plot_data(result, highlight_ranges,
+                            f"{measurement.measurement} changed more than {gradient} ({trend}) for {targetTime} minutes")
+
+        elif method == 'threshold':
+            threshold = (detail.get('min'), detail.get('max'))
+            queryType = {
+                'method': 'threshold',
+                'detail': {'min': threshold[0], 'max': threshold[1]}
+            }
+            result = await self.influxdbClient.alarmQueryExecutor(farmIdx, sector, measurement)
+            highlight_ranges = self._highlight_ranges(result['stateDuration'], targetTime)
+            self._plot_data(result, highlight_ranges,
+                            f"{measurement.measurement} between {threshold[0]} and {threshold[1]} for {targetTime} minutes")
+
+        else:
+            raise ValueError(f"Unsupported method: {method}")
+
         print(highlight_ranges)
-
-    async def alarmThreshold(self,
-                             farmIdx,
-                             sector,
-                             measurement: MeasurementOperation
-                             ):
-        """
-        특정 threshold 이하로 targetTime 이상 지속되면 알람 발생.
-
-        """
-
-        if not isinstance(measurement, MeasurementOperation):
-            raise ValueError("measurement must be MeasurementOperation type")
-
-        threshold = (measurement.detail['min'], measurement.detail['max'])
-        targetTime = measurement.targetTime
-
-        result = await self.influxdbClient.alarmQueryExecutor(farmIdx, sector, measurement)
-        highlight_ranges = self._highlight_ranges(result['stateDuration'], targetTime)
-        self._plot_data(result, highlight_ranges, f"{threshold}")
-        print(highlight_ranges)
-
 
 
     def _highlight_ranges(self, state_duration_data, target_time):
@@ -294,6 +243,7 @@ if __name__ ==  "__main__":
     async def main():
         anomalyDetectService = AnomalyDetectService()
         await anomalyDetectService.influxdbClient.initializeClient()
+
         measurement = MeasurementOperation(
             measurement=['relativeHumidity', 'averageTemperature'],
             operator='*',
@@ -305,7 +255,7 @@ if __name__ ==  "__main__":
             },
             targetTime=10
         )
-        await anomalyDetectService.alarmGradient(103, 3, measurement)
+        await anomalyDetectService.alarmMonitor(103, 3, measurement)
 
 
         measurement = MeasurementOperation(
@@ -318,20 +268,30 @@ if __name__ ==  "__main__":
             },
             targetTime=10
         )
-        await anomalyDetectService.alarmThreshold(103, 3, measurement)
-
+        await anomalyDetectService.alarmMonitor(103, 3, measurement)
 
 
         measurement = MeasurementOperation(
             measurement=['relativeHumidity'],
             method='threshold',
             detail={
-                'min': 80,
-                'max': 85,
+                'min': 82,
+                'max': 84,
             },
             targetTime=30
         )
-        await anomalyDetectService.alarmThreshold(103, 3, measurement)
+        await anomalyDetectService.alarmMonitor(103, 3, measurement)
+
+        measurement = MeasurementOperation(
+            measurement=['relativeHumidity'],
+            method='gradient',
+            detail={
+                'trend': 'up',
+                'gradient': 0.1,
+            },
+            targetTime=30
+        )
+        await anomalyDetectService.alarmMonitor(103, 3, measurement)
 
         # await anomalyDetectService.execute_alarm_rules(
         #     farmIdx=103,
