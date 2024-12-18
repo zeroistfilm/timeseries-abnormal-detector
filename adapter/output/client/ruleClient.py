@@ -101,7 +101,7 @@ class RuleClient:
                             'rule_id': 'humidity_fit',
                             'description': '습도 적합',
                             'if_matched': 'normal',
-                            'level': 'warning'
+                            'level': 'normal'
                         },
                         'humidity_low_warning': {
                             'max': None,
@@ -306,7 +306,7 @@ class RuleClient:
                             'min': 34,
                             'rule_owner': 'global',
                             'type': 'threshold',
-                            'rule_id': '',
+                            'rule_id': 'temperature_high_caution',
                             'description': '온도 상한 주의',
                             'if_matched': 'abnormal',
                             'level': 'caution'
@@ -336,7 +336,7 @@ class RuleClient:
                             'min': 30,
                             'rule_owner': 'global',
                             'type': 'threshold',
-                            'rule_id': '',
+                            'rule_id': 'temperature_low_warning',
                             'description': '온도 하한 경고',
                             'if_matched': 'abnormal',
                             'level': 'warning'
@@ -357,7 +357,7 @@ class RuleClient:
             },
         }
 
-    def getRule(self, farmIdx: str, sector: str, measurement, topic, age: int) -> list[Rule]:
+    def getRule(self, measurement, age: int) -> list[Rule]:
 
         ruleList = []
         # TODO

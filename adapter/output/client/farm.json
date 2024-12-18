@@ -1,0 +1,136 @@
+{
+  "sectors": 3,
+  "lat": "36.864987",
+  "long": "127.412866",
+  "farmIdx": "505",
+  "kafka": false,
+  "region": "\uc9c4\ucc9c",
+  "sector": {
+    "3": {
+      "ai": {
+        "activity": "True",
+        "cluster": "True"
+      },
+      "c": {
+        "layout": ""
+      },
+      "cam": {
+        "arrangement": [
+          [
+            "2-1",
+            "2-2",
+            "2-3",
+            "2-4",
+            "2-5",
+            "2-6",
+            "2-7",
+            "2-8"
+          ],
+          [
+            "1-1",
+            "1-2",
+            "1-3",
+            "1-4",
+            "1-5",
+            "1-6",
+            "1-7",
+            "1-8"
+          ]
+        ],
+        "grid": {
+          "1-1": {
+            "local_rtsp": "rtsp://admin:visionit1!@10.5.1.101:554/trackID=1",
+            "rtsp": "rtsp://admin:visionit1!@59.31.158.49:7101/trackID=1"
+          },
+          "1-2": {
+            "local_rtsp": "rtsp://admin:visionit1!@10.5.1.102:554/trackID=1",
+            "rtsp": "rtsp://admin:visionit1!@59.31.158.49:7102/trackID=1"
+          },
+          "1-3": {
+            "local_rtsp": "rtsp://admin:visionit1!@10.5.1.103:554/trackID=1",
+            "rtsp": "rtsp://admin:visionit1!@59.31.158.49:7103/trackID=1"
+          },
+          "1-4": {
+            "local_rtsp": "rtsp://admin:visionit1!@10.5.1.104:554/trackID=1",
+            "rtsp": "rtsp://admin:visionit1!@59.31.158.49:7104/trackID=1"
+          },
+          "1-5": {
+            "local_rtsp": "rtsp://admin:visionit1!@10.5.1.105:554/trackID=1",
+            "rtsp": "rtsp://admin:visionit1!@59.31.158.49:7105/trackID=1"
+          },
+          "1-6": {
+            "local_rtsp": "rtsp://admin:visionit1!@10.5.1.106:554/trackID=1",
+            "rtsp": "rtsp://admin:visionit1!@59.31.158.49:7106/trackID=1"
+          },
+          "1-7": {
+            "local_rtsp": "rtsp://admin:visionit1!@10.5.1.107:554/trackID=1",
+            "rtsp": "rtsp://admin:visionit1!@59.31.158.49:7107/trackID=1"
+          },
+          "1-8": {
+            "local_rtsp": "rtsp://admin:visionit1!@10.5.1.108:554/trackID=1",
+            "rtsp": "rtsp://admin:visionit1!@59.31.158.49:7108/trackID=1"
+          },
+          "2-1": {
+            "local_rtsp": "rtsp://admin:visionit1!@10.5.1.109:554/trackID=1",
+            "rtsp": "rtsp://admin:visionit1!@59.31.158.49:7109/trackID=1"
+          },
+          "2-2": {
+            "local_rtsp": "rtsp://admin:visionit1!@10.5.1.110:554/trackID=1",
+            "rtsp": "rtsp://admin:visionit1!@59.31.158.49:7110/trackID=1"
+          },
+          "2-3": {
+            "local_rtsp": "rtsp://admin:visionit1!@10.5.1.111:554/trackID=1",
+            "rtsp": "rtsp://admin:visionit1!@59.31.158.49:7111/trackID=1"
+          },
+          "2-4": {
+            "local_rtsp": "rtsp://admin:visionit1!@10.5.1.112:554/trackID=1",
+            "rtsp": "rtsp://admin:visionit1!@59.31.158.49:7112/trackID=1"
+          },
+          "2-5": {
+            "local_rtsp": "rtsp://admin:visionit1!@10.5.1.113:554/trackID=1",
+            "rtsp": "rtsp://admin:visionit1!@59.31.158.49:7113/trackID=1"
+          },
+          "2-6": {
+            "local_rtsp": "rtsp://admin:visionit1!@10.5.1.114:554/trackID=1",
+            "rtsp": "rtsp://admin:visionit1!@59.31.158.49:7114/trackID=1"
+          },
+          "2-7": {
+            "local_rtsp": "rtsp://admin:visionit1!@10.5.1.115:554/trackID=1",
+            "rtsp": "rtsp://admin:visionit1!@59.31.158.49:7115/trackID=1"
+          },
+          "2-8": {
+            "local_rtsp": "rtsp://admin:visionit1!@10.5.1.116:554/trackID=1",
+            "rtsp": "rtsp://admin:visionit1!@59.31.158.49:7116/trackID=1"
+          },
+          "weight_2-1": {
+            "local_rtsp": "rtsp://admin:dbsldkdl1!@10.5.1.117:554/ISAPI/streaming/channels/102"
+          }
+        },
+        "layout": "2*8",
+        "rotation": 0
+      },
+      "h": {
+        "layout": ""
+      },
+      "n": {
+        "layout": ""
+      },
+      "t": {
+        "layout": ""
+      },
+      "w": {
+        "grid": {
+          "2-1": {
+            "sensor": "http://59.31.158.49:1300/hex?message=303052570D0A",
+            "sensor_reset": "http://59.31.158.49:1300/hex?message=30304D5A0D0A",
+            "sensor_type": "CAS",
+            "snapshot": "http://admin:dbsldkdl1!@59.31.158.49:1172/ISAPI/streaming/channels/102/picture"
+          }
+        },
+        "layout": ""
+      }
+    },
+    "desc": ""
+  },
+  "supplier": "\ubaa9\uc6b0\ucd0c"
+}

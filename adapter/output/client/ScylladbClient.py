@@ -12,6 +12,9 @@ class ScyllaDBClient:
         self.cluster = Cluster(["haproxy.uniai.co.kr"])
         self.session = self.cluster.connect('prod')
 
+        self.farmInfo = self.getTableData('farminfo')
+
+
     def insert_dict(self, tableName, key, data_dict):
         # Python dict를 JSON 문자열로 변환
         json_data = json.dumps(data_dict)
@@ -93,14 +96,25 @@ class ScyllaDBClient:
 
         # 3. 상태 변경 기록
         query_insert = """
-               INSERT INTO rule_match_status (topic, createdAt, rule_id, detail)
-               VALUES (%s, %s, %s, %s);
+               INSERT INTO rule_match_status (topic, createdAt, rule_id, detail, updatedat)
+               VALUES (%s, %s, %s, %s, %s);
                """
 
         self.session.execute(
             query_insert,
-            [topic, timestamp, rule_id, detail_str]
+            [topic, timestamp, rule_id, detail_str, timestamp]
         )
         print(f"Status updated for topic '{topic}' with rule_id '{rule_id}'.")
         return
+
+    def getGeoCode(self, farmIdx):
+        lat, long = None, None
+        for farmName, value in self.farmInfo.items():
+            if value['farmIdx'] == str(farmIdx):
+                sectors = value['sectors']
+                return value['lat'], value['long'], farmName, sectors
+
+        if lat is None or long is None:
+            raise ValueError("해당 농장의 위도 경도 정보가 없습니다.")
+
 
