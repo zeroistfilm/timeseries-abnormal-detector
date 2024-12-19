@@ -406,6 +406,12 @@ class InfluxDBClient():
     async def alarmQueryExecutor(self, farmIdx, sector, measurement:MeasurementOperation):
         query = self._generateQuery({'farmIdx': farmIdx, 'sector': sector}, measurement)
         result = await self._process_query(query)
+
+        if len(result['topics'])>1 and measurement.queryOption == {}:
+            raise ValueError(f"{result['topics']} 여러 토픽이 검색되었습니다. 머지 기능을 활성화해주세요.")
+
+        if result == {}:
+            raise ValueError("쿼리 결과가 없습니다. topic을 확인해주세요.")
         return result
 
 
@@ -415,9 +421,22 @@ class InfluxDBClient():
         """
         res = await self.client.query_api().query(query=query)
         result = {}
+
+        #여러 토픽이 있는지 체크, 여러 토픽이 있다면 머지 기능 활성화 해야함.
+        topics = set()
         for table in res:
             for record in table.records:
-                print(record.values)
+                if 'topic' not in record.values:
+                    continue
+                topics.add(record.values['topic'])
+        #
+        #
+        #     raise ValueError(f"{topics} 여러 토픽이 검색되었습니다. 머지 기능을 활성화해주세요.")
+        result['topics'] = list(topics)
+
+
+        for table in res:
+            for record in table.records:
                 title = record.values['result']
                 time = record.values['_time']
                 value = record.values['_value']
@@ -463,7 +482,7 @@ class InfluxDBClient():
         def __getBasicQuery(farmIdx, sector, name, measurement):
             return f'''
                 {name} = from(bucket: "ai_data")
-                |> range(start: -1d, stop: now())
+                |> range(start: -2d, stop: -1d)
                 |> filter(fn: (r) => r.topic =~ /choretime\/{farmIdx}\/[^\/]+\/{sector}\/{measurement}/)
                 |> aggregateWindow(every: 10m, fn: mean, createEmpty: false)
                 |> movingAverage(n: 6)

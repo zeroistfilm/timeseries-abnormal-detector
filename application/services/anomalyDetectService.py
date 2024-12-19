@@ -300,7 +300,7 @@ if __name__ ==  "__main__":
         measurement1 = MeasurementOperation(
             measurement=['heatStatus'],
             method='threshold',
-            detail={'min': 1, 'max': 2},  # 히터가 작동 중
+            detail={'min': 1, 'max': 10},  # 히터가 작동 중
             targetTime=30,
             queryOption={
                 'method': 'merge',
@@ -308,13 +308,17 @@ if __name__ ==  "__main__":
             }
         )
         measurement2 = MeasurementOperation(
-            measurement=['averageTemperature'],
+            measurement=['temperature'],
             method='gradient',
-            detail={'trend': 'down', 'gradient': 0.05},  # 기대되는 상승이 없음
-            targetTime=30
+            detail={'trend': 'up', 'gradient': 0.05},  # 기대되는 상승이 없음
+            targetTime=30,
+            queryOption={
+                'method': 'merge',
+                'sub_function': 'mean'
+            }
         )
         measurements = [measurement1, measurement2]
-        overlapTimes = await anomalyDetectService.multiAlarmMonitor(103, 3,  measurements)
+        overlapTimes = await anomalyDetectService.multiAlarmMonitor(101, 3,  measurements)
         print(overlapTimes)
 
         # await anomalyDetectService.execute_alarm_rules(
