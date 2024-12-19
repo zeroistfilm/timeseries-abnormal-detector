@@ -1,6 +1,7 @@
-
 from typing import List
 from dataclasses import dataclass, field
+
+
 @dataclass
 class MeasurementOperation:
     measurement: List[str] = field(default_factory=list)
@@ -8,6 +9,7 @@ class MeasurementOperation:
     method: str = ""
     detail: dict = field(default_factory=dict)
     targetTime: int = 0
+    queryOption: dict = field(default_factory=dict)
 
     def __post_init__(self):
         self.validate()
@@ -26,7 +28,6 @@ class MeasurementOperation:
             valid_operations = {'+', '-', '*', '/'}
             if self.operator not in valid_operations:
                 raise ValueError(f"operation은 {valid_operations} 중 하나여야 합니다.")
-
 
         if self.method == "gradient":
 
@@ -61,3 +62,11 @@ class MeasurementOperation:
 
         if not isinstance(self.targetTime, int):
             raise ValueError("targetTime detail은 int 형식으로 입력해주세요.")
+
+        if len(self.queryOption.keys()) > 0:
+            if 'method' not in self.queryOption:
+                raise ValueError("queryOption은 method detail이 필요합니다.")
+
+            if self.queryOption['sub_function'] not in ['mean', 'sum']:
+                raise ValueError("method는 'mean', 'sum' 중 하나여야 합니다.")
+

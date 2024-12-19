@@ -448,6 +448,18 @@ class InfluxDBClient():
                     gradient: float
             }
         '''
+
+#         '''
+#         firstData =from(bucket:"ai_data")
+# |>range(start:-1d , stop:now())
+# |>filter (fn: (r)=> r.topic =~ /choretime\/103\/[^\/]+\/3\/heatStatus/)
+# |> aggregateWindow(every: 1m, fn:(tables=<-, column) => tables |> median(), createEmpty: false)
+# |> movingAverage(n:6)
+# |> group(columns:["_time"])
+# |> sum()
+# |> group()
+# |>yield(name:"firstData")
+# '''
         def __getBasicQuery(farmIdx, sector, name, measurement):
             return f'''
                 {name} = from(bucket: "ai_data")
@@ -497,6 +509,26 @@ class InfluxDBClient():
 
             query += first_query + second_query + join_query
 
+        if measurement.queryOption == {}:
+            pass
+        elif measurement.queryOption['method'] == "merge":
+            if measurement.queryOption['sub_function'] == 'sum':
+                query += f'''
+                    |> group(columns:["_time"])
+                    |> sum()
+                    |> group()
+                    |> drop(columns:["_start", "_stop", "_measurement", "_field", "topic"])
+                    |>yield(name:"merged")
+                    '''
+            elif measurement.queryOption['sub_function'] == 'mean':
+                query += f'''
+                    |> group(columns:["_time"])
+                    |> mean()
+                    |> group()
+                    |> drop(columns:["_start", "_stop", "_measurement", "_field", "topic"])
+                    |>yield(name:"merged")
+                    '''
+
 
         if measurement.method == 'threshold':
             # min = queryType['detail']['min']
@@ -542,6 +574,9 @@ class InfluxDBClient():
                   |> stateDuration(fn: (r) => r._value < {gradient}, unit: 1m)
                   |> yield(name: "trend")
                 '''
+
+
+
 
         print(query)
         return query

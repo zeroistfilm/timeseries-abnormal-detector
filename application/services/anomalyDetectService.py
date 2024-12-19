@@ -152,16 +152,21 @@ class AnomalyDetectService:
 
         fig, ax1 = plt.subplots(figsize=(24, 12))  # 메인 축 생성
 
-        # 첫 번째 Y축: firstData
-        if 'firstData' in result:
-            first_time = [point[0] for point in result['firstData']]
-            first_value = [point[1] for point in result['firstData']]
-            ax1.plot(first_time, first_value, label="firstData", linestyle='-', marker='o', color='tab:blue')
+        if 'merged'in result:
+            first_time = [point[0] for point in result['merged']]
+            first_value = [point[1] for point in result['merged']]
+            ax1.plot(first_time, first_value, label="merged", linestyle='-', marker='o', color='tab:blue')
+        else:
+            # 첫 번째 Y축: firstData
+            if 'firstData' in result:
+                first_time = [point[0] for point in result['firstData']]
+                first_value = [point[1] for point in result['firstData']]
+                ax1.plot(first_time, first_value, label="firstData", linestyle='-', marker='o', color='tab:blue')
 
-        if 'secondData' in result:
-            second_time = [point[0] for point in result['secondData']]
-            second_value = [point[1] for point in result['secondData']]
-            ax1.plot(second_time, second_value, label="secondData", linestyle='-', marker='x', color='tab:blue')
+            if 'secondData' in result:
+                second_time = [point[0] for point in result['secondData']]
+                second_value = [point[1] for point in result['secondData']]
+                ax1.plot(second_time, second_value, label="secondData", linestyle='-', marker='x', color='tab:blue')
 
         ax1.set_xlabel("Time")
         ax1.set_ylabel("First and Second Data", color='tab:blue')
@@ -293,10 +298,14 @@ if __name__ ==  "__main__":
         await anomalyDetectService.influxdbClient.initializeClient()
 
         measurement1 = MeasurementOperation(
-            measurement=['heatStatus1'],
+            measurement=['heatStatus'],
             method='threshold',
-            detail={'min': 0.1, 'max': 1.5},  # 히터가 작동 중
-            targetTime=30
+            detail={'min': 1, 'max': 2},  # 히터가 작동 중
+            targetTime=30,
+            queryOption={
+                'method': 'merge',
+                'sub_function': 'sum'
+            }
         )
         measurement2 = MeasurementOperation(
             measurement=['averageTemperature'],
