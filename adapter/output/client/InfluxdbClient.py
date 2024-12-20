@@ -10,6 +10,9 @@ import pandas as pd
 import datetime
 from py_singleton import singleton
 
+import pytz
+
+
 
 from adapter.output.client.dto.dto import MeasurementOperation
 
@@ -438,7 +441,9 @@ class InfluxDBClient():
         for table in res:
             for record in table.records:
                 title = record.values['result']
-                time = record.values['_time']
+                seoul_tz = pytz.timezone('Asia/Seoul')
+
+                time = record.values['_time'].astimezone(seoul_tz)
                 value = record.values['_value']
 
                 if title not in result:
@@ -482,7 +487,7 @@ class InfluxDBClient():
         def __getBasicQuery(farmIdx, sector, name, measurement):
             return f'''
                 {name} = from(bucket: "ai_data")
-                |> range(start: -2d, stop: -1d)
+                |> range(start: -7d, stop: now())
                 |> filter(fn: (r) => r.topic =~ /choretime\/{farmIdx}\/[^\/]+\/{sector}\/{measurement}/)
                 |> aggregateWindow(every: 10m, fn: mean, createEmpty: false)
                 |> movingAverage(n: 6)

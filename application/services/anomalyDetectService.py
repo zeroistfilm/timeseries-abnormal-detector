@@ -1,6 +1,9 @@
+import datetime
+
 if __name__ == "__main__":
     import sys
     import os
+
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from adapter.output.client.InfluxdbClient import InfluxDBClient
@@ -13,12 +16,10 @@ from py_singleton import singleton
 from adapter.output.client.dto.dto import MeasurementOperation
 
 
-
 @singleton
 class AnomalyDetectService:
     def __init__(self):
         self.influxdbClient = InfluxDBClient()
-
 
     async def multiAlarmMonitor(self, farmIdx: int, sector: int, measurements: list[MeasurementOperation]):
         """
@@ -33,7 +34,9 @@ class AnomalyDetectService:
         resultTimes = []
         for measurement in measurements:
             result, times = await self.alarmMonitor(farmIdx, sector, measurement)
+            # measurement.skipTimeRange
             resultTimes.append(times)
+
 
         overlaps = self.find_overlapping_intervals(resultTimes)
 
@@ -84,27 +87,69 @@ class AnomalyDetectService:
         targetTime = measurement.targetTime
         detail = measurement.detail
 
-        # method에 따라 설정
+        # InfluxDB 쿼리 실행 (공통)
+        result = await self.influxdbClient.alarmQueryExecutor(farmIdx, sector, measurement)
+        highlight_ranges = self._highlight_ranges(result['stateDuration'], targetTime)
+
+        # 시간 필터링 적용
+        filtered_ranges = self._expandAndFilterTimeRanges(highlight_ranges, measurement.skipTimeRange)
+
+        print(filtered_ranges)
+        # method에 따라 제목 생성
         if method == 'gradient':
             gradient = detail['gradient']
             trend = detail['trend']
-            result = await self.influxdbClient.alarmQueryExecutor(farmIdx, sector, measurement)
-            highlight_ranges = self._highlight_ranges(result['stateDuration'], targetTime)
-            self._plot_data(result, highlight_ranges,
-                            f"{measurement.measurement} changed more than {gradient} ({trend}) for {targetTime} minutes")
-
+            title = f"{measurement.measurement} changed more than {gradient} ({trend}) for {targetTime} minutes"
         elif method == 'threshold':
             threshold = (detail.get('min'), detail.get('max'))
-            result = await self.influxdbClient.alarmQueryExecutor(farmIdx, sector, measurement)
-            highlight_ranges = self._highlight_ranges(result['stateDuration'], targetTime)
-            self._plot_data(result, highlight_ranges,
-                            f"{measurement.measurement} between {threshold[0]} and {threshold[1]} for {targetTime} minutes")
-
+            title = f"{measurement.measurement} between {threshold[0]} and {threshold[1]} for {targetTime} minutes"
         else:
             raise ValueError(f"Unsupported method: {method}")
 
-        return result, highlight_ranges
+        # 필터링된 데이터로 그래프 생성
+        self._plot_data(result, filtered_ranges, title)
 
+        return result, filtered_ranges
+
+    def _expandAndFilterTimeRanges(self, times, skipTimeRange):
+        """
+        시간 범위를 분 단위로 확장한 후, skipTimeRange에 해당하는 시간을 제외하고 필터링합니다.
+
+        Args:
+            times (list of tuples): [(startTime, endTime)] 시간 범위 리스트
+            skipTimeRange (list of tuples): 제외할 시간대 [(skipStartHour, skipEndHour)]
+
+        Returns:
+            list of tuples: 필터링된 시간 범위 리스트
+        """
+        expanded_times = []
+
+        # Step 1: 시간 범위를 1분 단위로 확장
+        for startTime, endTime in times:
+            current_time = startTime
+            while current_time < endTime:
+                expanded_times.append(current_time)
+                current_time += timedelta(minutes=1)
+
+        # Step 2: 시간 필터링 (skipTimeRange 제외)
+        filtered_times = [
+            time for time in expanded_times
+            if not any(skipStart <= time.hour < skipEnd for skipStart, skipEnd in skipTimeRange)
+        ]
+
+        # Step 3: 필터링된 시간대를 다시 범위로 결합
+        if not filtered_times:
+            return []
+
+        filtered_ranges = []
+        range_start = filtered_times[0]
+        for i in range(1, len(filtered_times)):
+            if (filtered_times[i] - filtered_times[i - 1]) > timedelta(minutes=1):
+                filtered_ranges.append((range_start, filtered_times[i - 1]))
+                range_start = filtered_times[i]
+        filtered_ranges.append((range_start, filtered_times[-1]))
+
+        return filtered_ranges
 
     def _highlight_ranges(self, state_duration_data, target_time):
         """
@@ -152,7 +197,7 @@ class AnomalyDetectService:
 
         fig, ax1 = plt.subplots(figsize=(24, 12))  # 메인 축 생성
 
-        if 'merged'in result:
+        if 'merged' in result:
             first_time = [point[0] for point in result['merged']]
             first_value = [point[1] for point in result['merged']]
             ax1.plot(first_time, first_value, label="merged", linestyle='-', marker='o', color='tab:blue')
@@ -223,11 +268,15 @@ class AnomalyDetectService:
         # 범례 설정
         fig.legend(loc="upper left", bbox_to_anchor=(0.1, 0.9))
         plt.show()
-if __name__ ==  "__main__":
+
+
+if __name__ == "__main__":
     import asyncio
     import random
     import numpy as np
     import time
+
+
     #
     # ALARM_RULES = [
     #     {
@@ -291,39 +340,143 @@ if __name__ ==  "__main__":
     #     },
     # ]
 
-
-
     async def main():
         anomalyDetectService = AnomalyDetectService()
         await anomalyDetectService.influxdbClient.initializeClient()
 
-        measurement1 = MeasurementOperation(
-            measurement=['heatStatus'],
-            method='threshold',
-            detail={'min': 1, 'max': 10},  # 히터가 작동 중
-            targetTime=30,
-            queryOption={
-                'method': 'merge',
-                'sub_function': 'sum'
-            }
-        )
-        measurement2 = MeasurementOperation(
-            measurement=['temperature'],
-            method='gradient',
-            detail={'trend': 'up', 'gradient': 0.05},  # 기대되는 상승이 없음
-            targetTime=30,
-            queryOption={
-                'method': 'merge',
-                'sub_function': 'mean'
-            }
-        )
-        measurements = [measurement1, measurement2]
-        overlapTimes = await anomalyDetectService.multiAlarmMonitor(101, 3,  measurements)
-        print(overlapTimes)
+        rules = [
+            # {
+            #     'name': 'high_thi_no_fan_low_humidity',
+            #     'conditions': [
+            #         MeasurementOperation(
+            #             measurement=['THI'],
+            #             method='threshold',
+            #             detail={'min':1700, 'max': 10000},  # 높은 온열지수
+            #             targetTime=30,
+            #             queryOption={
+            #                 'method': 'merge',
+            #                 'sub_function': 'mean'
+            #             }
+            #         ),
+            #         MeasurementOperation(
+            #             measurement=['tunnelFanStatus'],
+            #             method='threshold',
+            #             detail={'min':0, 'max':0.2},  # 터널팬 미작동
+            #             targetTime=30,
+            #             queryOption={
+            #                 'method': 'merge',
+            #                 'sub_function': 'mean'
+            #             }
+            #         ),
+            #         MeasurementOperation(
+            #             measurement=['relativeHumidity'],
+            #             method='threshold',
+            #             detail={'min': 60, 'max': 100},  # 상대습도 높음
+            #             targetTime=30,
+            #             queryOption={
+            #                 'method': 'merge',
+            #                 'sub_function': 'mean'
+            #             }
+            #         )
+            #     ],
+            #     'logic': 'AND',
+            #     'targetTime': 30,
+            #     'message': '온열지수가 높고 터널팬이 작동하지 않으며 습도가 높습니다. 즉시 팬과 환경 상태를 점검하세요.'
+            # },
+            {
+                'name': 'temp_out_of_range_dead_rising',
+                'conditions': [
+                    MeasurementOperation(
+                        measurement=['totalWaterToday'],
+                        method='gradient',
+                        detail={'trend': 'down', 'gradient': 1},
+                        targetTime=30,
+                        skipTimeRange=[(0,2), (5,10)]
+                    )
+                ],
+                'logic': 'AND',
+                'targetTime': 30,
+                'message': '음수량 감소',
+            },
+            # {
+            #     'name': 'high_static_pressure_no_min_vent',
+            #     'conditions': [
+            #         MeasurementOperation(
+            #             measurement=['staticPressure'],
+            #             method='threshold',
+            #             detail={'min': 20, 'max': 50},  # 높은 정압
+            #             targetTime=30,
+            #             queryOption={
+            #                 'method': 'merge',
+            #                 'sub_function': 'mean'
+            #             }
+            #         ),
+            #         MeasurementOperation(
+            #             measurement=['minVentStatus'],
+            #             method='threshold',
+            #             detail={'min':-10,'max': 0},  # 최소 환기 미작동
+            #             targetTime=30,
+            #             queryOption={
+            #                 'method': 'merge',
+            #                 'sub_function': 'sum'
+            #             }
+            #         )
+            #     ],
+            #     'logic': 'AND',
+            #     'targetTime': 30,
+            #     'message': '정압이 높고 최소환기가 작동하지 않습니다. 환기 시스템을 점검하세요.'
+            # },
+            # {
+            #     'name': 'low_water_high_culled_rate',
+            #     'conditions': [
+            #         MeasurementOperation(
+            #             measurement=['totalWaterToday'],
+            #             method='gradient',
+            #             detail={'trend': 'down', 'gradient': 10},  # 급수량 급감
+            #             targetTime=30,
+            #             queryOption={
+            #                 'method': 'merge',
+            #                 'sub_function': 'sum'
+            #             }
+            #         ),
+            #         MeasurementOperation(
+            #             measurement=['culledPercent'],
+            #             method='gradient',
+            #             detail={'trend': 'up', 'gradient': 0.1},  # 도태율 증가
+            #             targetTime=30,
+            #             queryOption={
+            #                 'method': 'merge',
+            #                 'sub_function': 'mean'
+            #             }
+            #         )
+            #     ],
+            #     'logic': 'AND',
+            #     'targetTime': 30,
+            #     'message': '급수량이 감소하면서 도태율이 증가합니다. 급수 시스템과 병아리 상태를 확인하세요.'
+            # }
+        ]
+
+        for rule in rules:
+            measurements = rule['conditions']
+            overlapTimes = await anomalyDetectService.multiAlarmMonitor(507, 2, measurements)
+            if overlapTimes:
+                print(f"Alarm Rule: {rule['name']}")
+                print(f"Overlap Times: {overlapTimes}")
+                print("message: ", rule['message'])
+                print()
+                import pandas as pd
+                df = pd.DataFrame(overlapTimes, columns=["Start Time", "End Time"])
+
+                # 중복된 시간 블록을 보기 좋게 정렬
+                df['Duration'] = df['End Time'] - df['Start Time']
+                df_sorted = df.sort_values(by=["Start Time", "End Time"]).reset_index(drop=True)
+                print(df_sorted)
 
         # await anomalyDetectService.execute_alarm_rules(
         #     farmIdx=103,
         #     sector=2,
         #     rules=ALARM_RULES
         # )
+
+
     asyncio.run(main())

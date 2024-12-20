@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import List
 from dataclasses import dataclass, field
 
@@ -10,6 +11,7 @@ class MeasurementOperation:
     detail: dict = field(default_factory=dict)
     targetTime: int = 0
     queryOption: dict = field(default_factory=dict)
+    skipTimeRange: List[tuple] = field(default_factory=list)
 
     def __post_init__(self):
         self.validate()
@@ -40,7 +42,7 @@ class MeasurementOperation:
             if 'gradient' not in self.detail:
                 raise ValueError("gradient method는 gradient detail이 필요합니다. float 형식으로 입력해주세요.")
 
-            if not isinstance(self.detail['gradient'], float):
+            if not isinstance(self.detail['gradient'], (float,  int)):
                 raise ValueError("gradient detail은 float 형식으로 입력해주세요.")
 
         elif self.method == "threshold":
