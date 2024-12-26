@@ -37,7 +37,6 @@ class AnomalyDetectService:
             # measurement.skipTimeRange
             resultTimes.append(times)
 
-
         overlaps = self.find_overlapping_intervals(resultTimes)
 
         return overlaps
@@ -387,11 +386,22 @@ if __name__ == "__main__":
                 'name': 'temp_out_of_range_dead_rising',
                 'conditions': [
                     MeasurementOperation(
-                        measurement=['totalWaterToday'],
+                        measurement=['temperature1'],
+                        queryStartTime='-30d',
+                        queryEndTime='now()',
+                        aggregateWindowSize='1h',
+                        aggregateMethod='mean',
+                        movingAverageWindowSize='5',
+
                         method='gradient',
                         detail={'trend': 'down', 'gradient': 1},
                         targetTime=30,
-                        skipTimeRange=[(0,2), (5,10)]
+
+                        # skipTimeRange=[(0, 2), (23, 24)],
+                        # queryOption={
+                        #     'method': 'merge',
+                        #     'sub_function': 'mean'
+                        # }
                     )
                 ],
                 'logic': 'AND',
@@ -458,7 +468,7 @@ if __name__ == "__main__":
 
         for rule in rules:
             measurements = rule['conditions']
-            overlapTimes = await anomalyDetectService.multiAlarmMonitor(507, 2, measurements)
+            overlapTimes = await anomalyDetectService.multiAlarmMonitor(101, 2, measurements)
             if overlapTimes:
                 print(f"Alarm Rule: {rule['name']}")
                 print(f"Overlap Times: {overlapTimes}")

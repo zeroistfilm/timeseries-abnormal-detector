@@ -412,6 +412,8 @@ class InfluxDBClient():
 
         if len(result['topics'])>1 and measurement.queryOption == {}:
             raise ValueError(f"{result['topics']} 여러 토픽이 검색되었습니다. 머지 기능을 활성화해주세요.")
+        if len(result['topics'])== 1 and measurement.queryOption != {}:
+            raise ValueError(f"{result['topics']} 단일 토픽이 검색되었습니다. 머지 기능을 비활성화해주세요.(필요없음)")
 
         if result == {}:
             raise ValueError("쿼리 결과가 없습니다. topic을 확인해주세요.")
@@ -484,13 +486,14 @@ class InfluxDBClient():
 # |> group()
 # |>yield(name:"firstData")
 # '''
-        def __getBasicQuery(farmIdx, sector, name, measurement):
+        def __getBasicQuery(farmIdx, sector, name, measurement, measurementOption):
+
             return f'''
                 {name} = from(bucket: "ai_data")
-                |> range(start: -7d, stop: now())
+                |> range(start: {measurementOption.queryStartTime}, stop: {measurementOption.queryEndTime})
                 |> filter(fn: (r) => r.topic =~ /choretime\/{farmIdx}\/[^\/]+\/{sector}\/{measurement}/)
-                |> aggregateWindow(every: 10m, fn: mean, createEmpty: false)
-                |> movingAverage(n: 6)
+                |> aggregateWindow(every: {measurementOption.aggregateWindowSize}, fn: {measurementOption.aggregateMethod}, createEmpty: false)
+                |> movingAverage(n: {measurementOption.movingAverageWindowSize})
                 |> yield(name: "{name}")
             '''
 
@@ -507,14 +510,14 @@ class InfluxDBClient():
         query = ""
         if len(measurement.measurement) == 1:
             single_measurement = measurement.measurement[0]
-            query += __getBasicQuery(farmIdx, sector, "firstData", single_measurement)
+            query += __getBasicQuery(farmIdx, sector, "firstData", single_measurement, measurement)
 
         else:
             first_measurement = measurement.measurement[0]
             second_measurement = measurement.measurement[1]
 
-            first_query = __getBasicQuery(farmIdx, sector, "firstData", first_measurement)
-            second_query = __getBasicQuery(farmIdx, sector, "secondData", second_measurement)
+            first_query = __getBasicQuery(farmIdx, sector, "firstData", first_measurement, measurement)
+            second_query = __getBasicQuery(farmIdx, sector, "secondData", second_measurement, measurement)
 
             join_query = f'''
                joined = join(
